@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 
 from .backends import ApiMathSolver, GenerationConfig, TransformersMathSolver
+from .config import DEFAULT_API_CONFIG_PATH, load_api_config
 from .prompt import build_math_prompt
 
 
@@ -19,10 +20,15 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="backend", required=True)
 
     api_parser = subparsers.add_parser("api", help="Use an OpenAI-compatible API.")
-    api_parser.add_argument("--model", required=True, help="API model name.")
+    api_parser.add_argument("--model", default=None, help="API model name. Defaults to api_config.json.")
     api_parser.add_argument("--problem", required=True, help="Math problem to solve.")
-    api_parser.add_argument("--api-key", default=None, help="API key. Defaults to OPENAI_API_KEY.")
-    api_parser.add_argument("--base-url", default=None, help="API base URL. Defaults to OPENAI_BASE_URL.")
+    api_parser.add_argument("--api-key", default=None, help="API key. Defaults to api_config.json.")
+    api_parser.add_argument("--base-url", default=None, help="API base URL. Defaults to api_config.json.")
+    api_parser.add_argument(
+        "--config",
+        default=None,
+        help=f"Path to API config JSON. Defaults to {DEFAULT_API_CONFIG_PATH.name}.",
+    )
     add_generation_args(api_parser)
 
     local_parser = subparsers.add_parser("local", help="Use a local transformers model.")
@@ -47,10 +53,20 @@ def main() -> None:
     prompt = build_math_prompt(args.problem)
 
     if args.backend == "api":
+        api_config = load_api_config(args.config)
+        model = args.model or api_config.get("model")
+        api_key = args.api_key or api_config.get("api_key")
+        base_url = args.base_url or api_config.get("base_url")
+
+        if not model:
+            parser.error("API model is required. Set --model or add model to api_config.json.")
+        if not api_key:
+            parser.error("API key is required. Set --api-key or add api_key to api_config.json.")
+
         solver = ApiMathSolver(
-            model=args.model,
-            api_key=args.api_key,
-            base_url=args.base_url,
+            model=model,
+            api_key=api_key,
+            base_url=base_url,
             generation_config=generation_config,
         )
     elif args.backend == "local":

@@ -13,23 +13,28 @@ The first goal is intentionally small: send a math problem to an LLM with a clea
 pip install -r requirements.txt
 ```
 
-For API usage, set:
+For API usage, copy the example config:
 
 ```bash
-set OPENAI_API_KEY=your_api_key
+copy api_config.example.json api_config.json
 ```
 
-Optional API settings:
+Then edit `api_config.json`:
 
-```bash
-set OPENAI_BASE_URL=https://api.openai.com/v1
+```json
+{
+  "api_key": "your_api_key_here",
+  "base_url": "https://api.openai.com/v1",
+  "model": "gpt-4.1-mini"
+}
 ```
+
+`api_config.json` is ignored by Git so your real key is not uploaded.
 
 ## API Example
 
 ```bash
 python -m math_solver.cli api ^
-  --model gpt-4.1-mini ^
   --problem "Find all positive integers n such that n^2 + n + 1 is divisible by 7."
 ```
 
