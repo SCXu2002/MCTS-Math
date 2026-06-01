@@ -85,6 +85,16 @@ python -m math_solver.evaluate ^
   --limit 10
 ```
 
+Evaluate with a local transformers model:
+
+```bash
+python -m math_solver.evaluate ^
+  --dataset gsm8k ^
+  --backend local ^
+  --model-path C:\path\to\local\model ^
+  --limit 10
+```
+
 Results are saved to `results/<dataset>_results.jsonl`.
 
 ## Prompt

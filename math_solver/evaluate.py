@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from .backends import ApiMathSolver, GenerationConfig
+from .backends import ApiMathSolver, GenerationConfig, TransformersMathSolver
 from .config import DEFAULT_API_CONFIG_PATH, load_api_config
 from .prompt import build_math_prompt
 
@@ -234,7 +234,22 @@ def normalize_answer(text: str | None) -> str | None:
     return text.lower()
 
 
-def build_api_solver(args: argparse.Namespace) -> ApiMathSolver:
+def build_solver(args: argparse.Namespace) -> ApiMathSolver | TransformersMathSolver:
+    if args.backend == "local":
+        if not args.model_path:
+            raise ValueError("Local model path is required. Set --model-path.")
+
+        return TransformersMathSolver(
+            model_path=args.model_path,
+            device_map=args.device_map,
+            torch_dtype=args.torch_dtype,
+            generation_config=GenerationConfig(
+                temperature=args.temperature,
+                max_new_tokens=args.max_new_tokens,
+                top_p=args.top_p,
+            ),
+        )
+
     api_config = load_api_config(args.config)
     model = args.model or api_config.get("model")
     api_key = args.api_key or api_config.get("api_key")
@@ -270,7 +285,7 @@ def run_evaluation(args: argparse.Namespace) -> None:
     if args.limit is not None:
         examples = examples[: args.limit]
 
-    solver = build_api_solver(args)
+    solver = build_solver(args)
     output_path = output_path_for(args)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -320,6 +335,7 @@ def run_evaluation(args: argparse.Namespace) -> None:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Evaluate the API solver on a math benchmark.")
     parser.add_argument("--dataset", required=True, help="Dataset name, e.g. gsm8k, math, aime.")
+    parser.add_argument("--backend", choices=("api", "local"), default="api", help="Solver backend. Defaults to api.")
     parser.add_argument("--data", default=None, help="Optional path to a .jsonl, .json, or .csv dataset file.")
     parser.add_argument("--data-root", default=str(DEFAULT_DATA_ROOT), help="Local data/cache root. Defaults to data.")
     parser.add_argument("--hf-path", default=None, help="Optional Hugging Face dataset path override.")
@@ -332,6 +348,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model", default=None, help="API model name. Defaults to api_config.json.")
     parser.add_argument("--api-key", default=None, help="API key. Defaults to api_config.json.")
     parser.add_argument("--base-url", default=None, help="API base URL. Defaults to api_config.json.")
+    parser.add_argument("--model-path", default=None, help="Local model path or Hugging Face model id.")
+    parser.add_argument("--device-map", default="auto")
+    parser.add_argument("--torch-dtype", default="auto", help="auto, float16, bfloat16, or float32.")
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--max-new-tokens", type=int, default=1024)
     parser.add_argument("--top-p", type=float, default=0.95)
