@@ -5,6 +5,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urljoin
+
+import requests
 
 from .prompt import MathPrompt, as_plain_text
 
@@ -25,28 +28,47 @@ class ApiMathSolver:
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
         generation_config: Optional[GenerationConfig] = None,
+        timeout: int = 120,
     ) -> None:
-        from openai import OpenAI
-
         self.model = model
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_url = self._build_api_url(base_url or os.getenv("OPENAI_BASE_URL"))
+        self.timeout = timeout
         self.generation_config = generation_config or GenerationConfig()
-        self.client = OpenAI(
-            api_key=api_key or os.getenv("OPENAI_API_KEY"),
-            base_url=base_url or os.getenv("OPENAI_BASE_URL"),
-        )
+
+        if not self.api_key:
+            raise ValueError("API key is required.")
+
+    @staticmethod
+    def _build_api_url(base_url: Optional[str]) -> str:
+        url = base_url or "https://api.openai.com/v1"
+        if url.rstrip("/").endswith("/chat/completions"):
+            return url
+        return urljoin(url.rstrip("/") + "/", "chat/completions")
 
     def solve(self, prompt: MathPrompt) -> str:
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": prompt.system},
-                {"role": "user", "content": prompt.user},
-            ],
-            temperature=self.generation_config.temperature,
-            max_tokens=self.generation_config.max_new_tokens,
-            top_p=self.generation_config.top_p,
+        response = requests.post(
+            self.api_url,
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": prompt.system},
+                    {"role": "user", "content": prompt.user},
+                ],
+                "temperature": self.generation_config.temperature,
+                "max_tokens": self.generation_config.max_new_tokens,
+                "top_p": self.generation_config.top_p,
+            },
+            timeout=self.timeout,
         )
-        return response.choices[0].message.content or ""
+        response.raise_for_status()
+        data = response.json()
+
+        return data["choices"][0]["message"]["content"] or ""
 
 
 class TransformersMathSolver:

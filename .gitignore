@@ -1,4 +1,7 @@
 api_config.json
+data/hf_cache/
+data/hf_datasets/
+results/
 __pycache__/
 *.py[cod]
 .venv/
