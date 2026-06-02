@@ -49,6 +49,25 @@ python -m math_solver.cli local ^
   --problem "Find all positive integers n such that n^2 + n + 1 is divisible by 7."
 ```
 
+## Tree Search Solving
+
+Direct solving is still the default. Add `--search` to use greedy tree search:
+
+1. Treat the original problem as the root.
+2. Ask the LLM to generate `k` different next reasoning-step branches.
+3. Ask the LLM to score each branch from 0 to 100.
+4. Select the highest-scoring branch and continue searching from it.
+5. After the search depth is reached, ask the LLM to write the final solution from the selected path.
+
+```bash
+python -m math_solver.cli api ^
+  --problem "Find all positive integers n such that n^2 + n + 1 is divisible by 7." ^
+  --search ^
+  --search-branches 3 ^
+  --search-depth 4 ^
+  --show-search-trace
+```
+
 ## Benchmark Evaluation
 
 You can evaluate directly from Hugging Face datasets. The first run downloads and caches the dataset; later runs reuse
@@ -83,6 +102,17 @@ Run a small test:
 python -m math_solver.evaluate ^
   --dataset gsm8k ^
   --limit 10
+```
+
+Evaluate with tree search:
+
+```bash
+python -m math_solver.evaluate ^
+  --dataset gsm8k ^
+  --limit 10 ^
+  --search ^
+  --search-branches 3 ^
+  --search-depth 4
 ```
 
 Evaluate with a local transformers model:

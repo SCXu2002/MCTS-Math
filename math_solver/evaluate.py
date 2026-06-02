@@ -13,6 +13,7 @@ from typing import Any, Iterable
 from .backends import ApiMathSolver, GenerationConfig, TransformersMathSolver
 from .config import DEFAULT_API_CONFIG_PATH, load_api_config
 from .prompt import build_math_prompt
+from .tree_search import TreeSearchConfig, TreeSearchMathSolver
 
 
 PROBLEM_KEYS = ("problem", "question", "prompt", "input")
@@ -220,17 +221,31 @@ def normalize_answer(text: str | None) -> str | None:
         return None
 
     text = text.strip()
-    if "####" in text:
-        text = text.split("####")[-1].strip()
 
+    # 对应 regexes_to_ignore: (?s).*#### 
+    if "####" in text:
+        text = re.sub(r"(?s).*#### ", "", text).strip()
+        # 兼容 "####123" 没有空格的情况
+        if "####" in text:
+            text = text.split("####")[-1].strip()
+
+    # 兼容 LaTeX boxed answer
     boxed = extract_boxed(text)
     if boxed:
-        text = boxed
+        text = boxed.strip()
 
+    # 对应 regexes_to_ignore
+    text = text.replace(",", "")
     text = text.replace("$", "")
+    text = re.sub(r"\.$", "", text)
+
+    # 额外清理常见 LaTeX 包裹
     text = re.sub(r"\\text\{([^{}]+)\}", r"\1", text)
     text = re.sub(r"\\left|\\right", "", text)
+
+    # GSM8K exact_match 通常比较最终数字，去掉空白更稳
     text = re.sub(r"\s+", "", text)
+
     return text.lower()
 
 
@@ -239,7 +254,7 @@ def build_solver(args: argparse.Namespace) -> ApiMathSolver | TransformersMathSo
         if not args.model_path:
             raise ValueError("Local model path is required. Set --model-path.")
 
-        return TransformersMathSolver(
+        solver = TransformersMathSolver(
             model_path=args.model_path,
             device_map=args.device_map,
             torch_dtype=args.torch_dtype,
@@ -249,6 +264,7 @@ def build_solver(args: argparse.Namespace) -> ApiMathSolver | TransformersMathSo
                 top_p=args.top_p,
             ),
         )
+        return wrap_search_solver(solver, args)
 
     api_config = load_api_config(args.config)
     model = args.model or api_config.get("model")
@@ -260,7 +276,7 @@ def build_solver(args: argparse.Namespace) -> ApiMathSolver | TransformersMathSo
     if not api_key:
         raise ValueError("API key is required. Set --api-key or add api_key to api_config.json.")
 
-    return ApiMathSolver(
+    solver = ApiMathSolver(
         model=model,
         api_key=api_key,
         base_url=base_url,
@@ -270,6 +286,23 @@ def build_solver(args: argparse.Namespace) -> ApiMathSolver | TransformersMathSo
             top_p=args.top_p,
         ),
         timeout=args.timeout,
+    )
+    return wrap_search_solver(solver, args)
+
+
+def wrap_search_solver(
+    solver: ApiMathSolver | TransformersMathSolver,
+    args: argparse.Namespace,
+) -> ApiMathSolver | TransformersMathSolver | TreeSearchMathSolver:
+    if not args.search:
+        return solver
+    return TreeSearchMathSolver(
+        solver,
+        config=TreeSearchConfig(
+            branches=args.search_branches,
+            max_depth=args.search_depth,
+        ),
+        include_trace=args.show_search_trace,
     )
 
 
@@ -355,6 +388,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-new-tokens", type=int, default=1024)
     parser.add_argument("--top-p", type=float, default=0.95)
     parser.add_argument("--timeout", type=int, default=120)
+    parser.add_argument("--search", action="store_true", help="Use greedy tree search instead of direct solving.")
+    parser.add_argument("--search-branches", type=int, default=3, help="Number of branches to generate at each step.")
+    parser.add_argument("--search-depth", type=int, default=4, help="Maximum tree-search depth.")
+    parser.add_argument("--show-search-trace", action="store_true", help="Save branch scores and selected path in prediction.")
     return parser
 
 

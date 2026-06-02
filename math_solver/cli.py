@@ -7,12 +7,20 @@ import argparse
 from .backends import ApiMathSolver, GenerationConfig, TransformersMathSolver
 from .config import DEFAULT_API_CONFIG_PATH, load_api_config
 from .prompt import build_math_prompt
+from .tree_search import TreeSearchConfig, TreeSearchMathSolver
 
 
 def add_generation_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--temperature", type=float, default=0.2)
     parser.add_argument("--max-new-tokens", type=int, default=1024)
     parser.add_argument("--top-p", type=float, default=0.95)
+
+
+def add_search_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--search", action="store_true", help="Use greedy tree search instead of direct solving.")
+    parser.add_argument("--search-branches", type=int, default=3, help="Number of branches to generate at each step.")
+    parser.add_argument("--search-depth", type=int, default=4, help="Maximum tree-search depth.")
+    parser.add_argument("--show-search-trace", action="store_true", help="Print branch scores and selected path.")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -30,6 +38,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Path to API config JSON. Defaults to {DEFAULT_API_CONFIG_PATH.name}.",
     )
     add_generation_args(api_parser)
+    add_search_args(api_parser)
 
     local_parser = subparsers.add_parser("local", help="Use a local transformers model.")
     local_parser.add_argument("--model-path", required=True, help="Local model path or Hugging Face model id.")
@@ -37,6 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     local_parser.add_argument("--device-map", default="auto")
     local_parser.add_argument("--torch-dtype", default="auto", help="auto, float16, bfloat16, or float32.")
     add_generation_args(local_parser)
+    add_search_args(local_parser)
 
     return parser
 
@@ -78,6 +88,16 @@ def main() -> None:
         )
     else:
         raise ValueError(f"Unknown backend: {args.backend}")
+
+    if args.search:
+        solver = TreeSearchMathSolver(
+            solver,
+            config=TreeSearchConfig(
+                branches=args.search_branches,
+                max_depth=args.search_depth,
+            ),
+            include_trace=args.show_search_trace,
+        )
 
     print(solver.solve(prompt))
 

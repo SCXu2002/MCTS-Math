@@ -46,7 +46,7 @@ class ApiMathSolver:
             return url
         return urljoin(url.rstrip("/") + "/", "chat/completions")
 
-    def solve(self, prompt: MathPrompt) -> str:
+    def complete(self, system: str, user: str) -> str:
         response = requests.post(
             self.api_url,
             headers={
@@ -56,8 +56,8 @@ class ApiMathSolver:
             json={
                 "model": self.model,
                 "messages": [
-                    {"role": "system", "content": prompt.system},
-                    {"role": "user", "content": prompt.user},
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
                 ],
                 "temperature": self.generation_config.temperature,
                 "max_tokens": self.generation_config.max_new_tokens,
@@ -69,6 +69,9 @@ class ApiMathSolver:
         data = response.json()
 
         return data["choices"][0]["message"]["content"] or ""
+
+    def solve(self, prompt: MathPrompt) -> str:
+        return self.complete(prompt.system, prompt.user)
 
 
 class TransformersMathSolver:
@@ -98,13 +101,14 @@ class TransformersMathSolver:
         )
         self.model.eval()
 
-    def solve(self, prompt: MathPrompt) -> str:
+    def complete(self, system: str, user: str) -> str:
         import torch
 
         messages = [
-            {"role": "system", "content": prompt.system},
-            {"role": "user", "content": prompt.user},
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
         ]
+        prompt = MathPrompt(system=system, user=user)
 
         if getattr(self.tokenizer, "chat_template", None):
             text = self.tokenizer.apply_chat_template(
@@ -130,3 +134,6 @@ class TransformersMathSolver:
 
         generated_ids = output_ids[0][inputs["input_ids"].shape[-1] :]
         return self.tokenizer.decode(generated_ids, skip_special_tokens=True).strip()
+
+    def solve(self, prompt: MathPrompt) -> str:
+        return self.complete(prompt.system, prompt.user)
