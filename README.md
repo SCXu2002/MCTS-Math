@@ -54,7 +54,7 @@ python -m math_solver.cli local ^
 Direct solving is still the default. Add `--search` to use greedy tree search:
 
 1. Treat the original problem as the root.
-2. Ask the LLM to generate `k` different next reasoning-step branches.
+2. Sample `k` independent next-step branches from the LLM.
 3. Ask the LLM to score each branch from 0 to 100.
 4. Select the highest-scoring branch and continue searching from it.
 5. After the search depth is reached, ask the LLM to write the final solution from the selected path.

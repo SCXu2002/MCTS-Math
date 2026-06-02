@@ -99,6 +99,33 @@ class TreeSearchMathSolver:
         )
 
     def _generate_branches(self, problem: str, path: list[str]) -> list[str]:
+        branches: list[str] = []
+        seen: set[str] = set()
+
+        for branch_index in range(self.config.branches):
+            branch = self._generate_one_branch(problem, path, branches, branch_index + 1)
+            normalized = _normalize_branch(branch)
+            if branch and normalized not in seen:
+                branches.append(branch)
+                seen.add(normalized)
+
+        return branches
+
+    def _generate_one_branch(
+        self,
+        problem: str,
+        path: list[str],
+        previous_branches: list[str],
+        branch_number: int,
+    ) -> str:
+        diversity_hint = ""
+        if previous_branches:
+            diversity_hint = f"""
+Already sampled next steps:
+{_format_path(previous_branches)}
+
+Sample a different valid continuation."""
+
         user = f"""We are solving this math problem with tree search.
 
 Problem:
@@ -107,16 +134,17 @@ Problem:
 Current reasoning path:
 {_format_path(path)}
 
-Generate exactly {self.config.branches} different possible next reasoning steps.
-Each branch should be a concise, mathematically meaningful continuation from the current path.
-Do not repeat the same idea in different wording.
-If the problem can now be finished, a branch may include the final answer in \\boxed{{...}}.
+You are sampling branch {branch_number} of {self.config.branches}.
+Generate exactly one possible next reasoning step.
+The step should be a concise, mathematically meaningful continuation from the current path.
+Do not write a full solution unless the next immediate step is the final answer.
+If the problem can now be finished, include the final answer in \\boxed{{...}}.
+{diversity_hint}
 
-Return only a JSON array of strings."""
+Return only the next step text, with no list numbering, JSON, or commentary."""
 
         raw = self.generator.complete(DEFAULT_SYSTEM_PROMPT, user)
-        branches = _parse_string_list(raw)
-        return branches[: self.config.branches]
+        return _parse_single_step(raw)
 
     def _score_branch(self, problem: str, path: list[str], candidate: str) -> float:
         user = f"""Score this proposed next reasoning step for solving the math problem.
@@ -167,25 +195,29 @@ def _format_path(path: list[str]) -> str:
     return "\n".join(f"{index}. {step}" for index, step in enumerate(path, start=1))
 
 
-def _parse_string_list(text: str) -> list[str]:
+def _parse_single_step(text: str) -> str:
     cleaned = _strip_code_fence(text)
     try:
         data = json.loads(cleaned)
-        if isinstance(data, list):
-            return [str(item).strip() for item in data if str(item).strip()]
+        if isinstance(data, str):
+            return data.strip()
+        if isinstance(data, dict):
+            for key in ("step", "next_step", "branch", "answer"):
+                if key in data and str(data[key]).strip():
+                    return str(data[key]).strip()
+        if isinstance(data, list) and data:
+            return str(data[0]).strip()
     except json.JSONDecodeError:
         pass
 
-    quoted = re.findall(r'"([^"\n]+)"', cleaned)
-    if quoted:
-        return [item.strip() for item in quoted if item.strip()]
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    if len(lines) == 1:
+        return re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", lines[0]).strip()
+    return cleaned.strip()
 
-    items = []
-    for line in cleaned.splitlines():
-        line = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", line).strip()
-        if line:
-            items.append(line)
-    return items
+
+def _normalize_branch(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip()).lower()
 
 
 def _parse_score(text: str) -> float:
